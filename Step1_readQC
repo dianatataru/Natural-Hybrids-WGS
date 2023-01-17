@@ -1,0 +1,58 @@
+#!/bin/bash
+#SBATCH --job-name=fastq
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/fastQC_files/fastqc.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/fastQC_files/fastqc.err
+#SBATCH --qos=long
+#SBATCH --time=7-00:00:00
+#SBATCH --cpus-per-task=6  #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --mem=128000
+
+#### load modules###
+module load fastqc
+module load gnuparallel
+module load anaconda3
+unset PYTHONPATH
+source activate /lustre/project/kferris/conda/conda-envs/qc_env
+
+###########################################################################################
+<<Note_toUser
+The script below serves to perform most of the QC steps needed before aligning and 
+variant calling.
+
+Softlinks to files only need to be made once and it's best not to work with the original 
+fastq or fastq.gz files. 
+
+FastQC will generate QC reports for each sequence file. This step is very slow to run.
+MultiQC will then take the fastQC output files and compile them into a single QC report.
+Note_toUser
+###########################################################################################
+
+echo "Start Job"
+
+### set working directory (file output directory) ###
+cd /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC
+
+### creating softlinks for fastq files to current directory ###
+#ln -s /lustre/project/kferris/Diana_Tataru/hybrids/1_hybrid1data/*.fastq.gz .
+
+### running FastQC ###
+#echo "Start FastQC"
+#for fastq in /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/*.fastq.gz;do
+#fastqc $fastq -o /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/fastQC_files/
+#done
+#echo "End FastQC"
+
+### running MultiQC (using Fastqc files) ###
+echo "Start MultiQC"
+multiqc . -o /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/multiqc
+echo "End MultiQC"
+
+### Unsetting environmentc ###
+source deactivate
+module purge #unloads all module
+
+echo "End Job"
