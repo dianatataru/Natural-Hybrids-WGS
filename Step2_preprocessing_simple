@@ -1,0 +1,145 @@
+#!/bin/bash
+#SBATCH --job-name=alignment_preprocessing
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing/alignments_untrimmed/output/pre-processing_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing/alignments_untrimmed/error/pre-processing_%A_%a.err
+#SBATCH --qos=long
+#SBATCH --time=7-00:00:00
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --cpus-per-task=20   #: Number of threads per task
+#SBATCH --array=1-4   # Job array (1-n) when n is number of unique samples that came off the sequencer
+
+
+### LOAD MODULES ###
+module load bwa
+module load samtools/1.10
+module load java-openjdk
+
+#####################################################################
+<<Simple_pre_processing_workflow
+SIMPLE WORKFLOW- samples not split across lanes
+
+This script is designed to prepare samples for GATK varient calling. 
+It begins with sequence files in seqdata.fq.gz or seqdata.fq format
+The workflow is as follows:
+perform the alignment with bwa -mem and assign readgroup information,
+convert resulting .sam files to .bam files. The resulting file will
+be an aligned paired end and sorted bam file.
+
+Output file: ${SAMPLE}_aln_pe_fm_sorted.bam
+
+NOTE: This script makes use of an arrray and by nature of a job array not all .bam
+files will be generated at the same time. Make sure the entire job is done running
+before moving forward. You can check on a job by using the "squeue" command in the 
+terminal.
+
+For second half- The workflow I followed uses the following documentation:
+https://eriqande.github.io/eca-bioinf-handbook/alignment-of-sequence-data-to-a-reference-genome-and-associated-steps.html
+in summary the steps taken should be asigning read groups, aligning with bwa, and
+processing with samtools
+
+
+Input file:  ${SAMPLE}_aln_pe_sorted.bam
+Output files:${SAMPLE}_merged.bam
+                ${SAMPLE}_markdup.bam
+                ${SAMPLE}_markdup.bam.bai
+                ${SAMPLE}_markdup.bam.flagstat.txt
+
+Simple_pre_processing_workflow
+#####################################################################
+
+echo "Start Job"
+
+
+### ASSIGNING VARIABLES ###
+# Array 1-n represents n number of samples and SLURM_ARRAY_TASK_ID represents elements in that array.
+# The following line allows us to link the elements of the array with the FW and RV read files (R1/R2).
+#the sort step should sort samples alphanumerically
+#note: find command searches recursively, grep command selects either read 1 or 2
+R1=$(find /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/ \
+    | grep R1_001.fastq.gz \
+    | sort \
+    | awk -v line=${SLURM_ARRAY_TASK_ID} 'line==NR')
+R2=$(find /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/ \
+    | grep R2_001.fastq.gz \
+    | sort \
+    | awk -v line=${SLURM_ARRAY_TASK_ID} 'line==NR')
+
+# Sample prefix from the R1/R2 files, is in the sample_names.list (ex: KGF_02.._L3)
+#This part changes based on the naming system. The user will have to modify this as needed
+SAMPLE=$(echo $R1 | cut -d "/" -f 8 | cut -d "_" -f 1-2) #Retrieves first element before "_"
+HEADER=$(echo $R1 | cut -d "/" -f 8 | cut -d "_" -f 1-2) #Retrieves first element before "_"
+SEQID="hybrids" #project name and date for bam header
+REF="/lustre/project/kferris/MimulusGuttatus_reference/MguttatusTOL_551_v5.0.fa" #reference genome for the california foothills population
+THREADS=20
+TMPDIR="/lustre/project/kferris/TMPDIR" #designated storage folders for temporary files (should be empty at end)
+PICARD="/share/apps/picard/2.20.7/picard.jar"
+
+#####################################################################
+<<BWA_Alignment
+This BWA aligmnent uses some of Caiti Heil's workflow from the
+runSeqAlignVarientCall_20190130.sh script which I have stored
+on my local machine under my desktop "Ferris Lab Materials" folder.
+In an email conversation she mentioned that she did not trim the 
+sequencing data because her lab got better alignments when they didn't trim.
+I've combined some of her methods with the suggested workflow in:
+https://eriqande.github.io/eca-bioinf-handbook/alignment-of-sequence-data-to-a-reference-genome-and-associated-steps.html
+BWA_Alignment
+#####################################################################
+
+### SETTING WORKING DIRECTORY WHERE BWA OUTPUTS WILL GO ###
+cd /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing/alignments_untrimmed
+mkdir ${HEADER}  #makes a directory for each biological sample.
+
+########## RUNNING THE ALIGNMENT ON UNTRIMMED DATA ##########
+fixmate -r flag removes unaligned reads
+echo "Start Alignment"
+
+bwa mem -R '@RG\tID:'${SEQID}'\tSM:'${SAMPLE}'\tLB:lib1' -t ${THREADS} ${REF} \
+   ${R1} ${R2} \
+ | samtools view -hb -@ ${THREADS} - | samtools sort -n -T $TMPDIR -@ ${THREADS} - -o ${HEADER}/${SAMPLE}_aln_pe_sorted.bam
+samtools fixmate -rm -@ ${THREADS} ${HEADER}/${SAMPLE}_aln_pe_sorted.bam - \
+ | samtools sort -T $TMPDIR -@ ${THREADS} - -o ${HEADER}/${SAMPLE}_aln_pe_fm_sorted.bam
+
+
+echo "End Alignment"
+
+### MARK AND REMOVE DUPLICATE READS ###
+java -jar $PICARD MarkDuplicates \
+     INPUT=${SAMPLE}/${SAMPLE}_aln_pe_fm_sorted.bam \
+     OUTPUT=${SAMPLE}/${SAMPLE}_markdup.bam \
+     METRICS_FILE=${SAMPLE}/${SAMPLE}_dup_metrics.txt \
+     ASSUME_SORTED=true \
+     REMOVE_DUPLICATES=true \
+     VALIDATION_STRINGENCY=LENIENT \
+     TMP_DIR=$TMPDIR
+
+### MARK AND REMOVE DUPLICATE READS ###
+#java -jar $PICARD MarkDuplicates \
+#     -INPUT ${SAMPLE}/${SAMPLE}_aln_pe_fm_sorted.bam \
+#     -OUTPUT ${SAMPLE}/${SAMPLE}_markdup.bam \
+#     -METRICS_FILE ${SAMPLE}/${SAMPLE}_dup_metrics.txt \
+#     -ASSUME_SORTED true \
+#     -REMOVE_DUPLICATES true \
+#     -VALIDATION_STRINGENCY LENIENT
+
+### MARK AND REMOVE DUPLICATE READS ###
+#java -jar $PICARD MarkDuplicates \
+#     I=${SAMPLE}/${SAMPLE}_aln_pe_fm_sorted.bam \
+#     O=${SAMPLE}/${SAMPLE}_markdup.bam \
+#     M=${SAMPLE}/${SAMPLE}_dup_metrics.txt \
+#     ASSUME_SORTED=true \
+#     REMOVE_DUPLICATES=true \
+#     VALIDATION_STRINGENCY LENIENT \
+#     TMP_DIR=$TMPDIR
+
+samtools index -@ ${THREADS} ${SAMPLE}/${SAMPLE}_markdup.bam
+
+### Looking at alignment Again ###
+samtools flagstat -@ ${THREADS} ${SAMPLE}/${SAMPLE}_markdup.bam \
+   > ${SAMPLE}/${SAMPLE}_markdup.bam.flagstat.txt
+
+
+module purge
+echo "End Job"

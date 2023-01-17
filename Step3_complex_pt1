@@ -1,0 +1,104 @@
+#!/bin/bash
+#SBATCH --job-name=GATK_part1
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/output_varcall/var_call_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/error_varcall/var_call_%A_%a.err
+#SBATCH --qos=long
+#SBATCH --time=0-168:00:00
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --cpus-per-task=20   #: Number of threads per task
+#SBATCH --array=192-205   # Job array 309 samples total
+
+#### load modules here
+module load samtools/1.10
+module load gatk/4.1.8.1
+module load java-openjdk/1.8.0
+
+
+<<GATK_VariantCalling
+This script uses the gatk toolkit version gatk/4.1.8.1 and
+was written in spring 2021 by Natalie Gonzalez
+
+This is part 1 of the gatk variant calling process. This script
+        starts by renaming the read groups in the merged bam files
+        using picard AddOrReplaceReadGroups, and then samtools
+        is used to index the reslting file. Then the script
+        calls the gatk HaplotypeCaller in GVCF mode, producing a vcf
+        file per sample containing genotype likelihoods for variant alleles.
+        These files can be viewed in IGV. A TBI file is created for each VCF.
+
+note: normally before begining this workflow we'd begin with a
+        base quality recalibration step on the analysis ready bam
+        files, and conclude with the gatk VariantRecalibrator, but
+        both steps are being omitted because they require VCF files
+        of already known variants for the populations being worked with
+GATK_VariantCalling
+
+echo "Start Job"
+
+#### Variables
+P=$(find /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/ -type d | grep _S | sort | awk -v line=${SLURM_ARRAY_TASK_ID} 'line==NR')
+
+SAMPLE=$(echo $P | cut -d "/" -f 8 | cut -d "_" -f 1-2) #Retrieves sample name ex: "KGF_02"
+
+echo "P=$P"
+echo "SAMPLE=$SAMPLE"
+
+#REF="/lustre/project/kferris/MguttatusTOL_551_v5.0.fa"
+#INPUTDIR= "/lustre/project/kferris/UCDavis_seqdata/BDR_gatk/3_BDR_pre-processing_merged" #location to bam files
+#TEMP= "/lustre/project/kferris/UCDavis_seqdata/BDR_gatk/TMPDIR"
+PICARD="/share/apps/picard/2.20.7/picard.jar"
+THREADS=20
+
+### RENAMING READGROUPS IN MERGED .BAM FILES ###
+#go to directory with merged samples
+#input the merged .bam file with 2 @RG and change them to 1 @RG
+#necessary because HaplotypeCaller otherwise fails (can't handle more than 1 sample)
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/${SAMPLE}/
+
+#Picards command line syntax changed
+
+#java -jar $PICARD AddOrReplaceReadGroups \
+#      -I ${SAMPLE}_markdup.bam \
+#      -O ${SAMPLE}_markdup_RGreplaced.bam \
+#      -RGID "naturalhybrids_2020" \
+#      -RGLB "Lib1" \
+#      -RGPL "ILLUMINA" \
+#      -RGPU "unit1" \
+#      -RGSM ${SAMPLE}
+
+#old syntax
+ java -jar $PICARD AddOrReplaceReadGroups \
+       I= ${SAMPLE}_markdup.bam \
+       O= ${SAMPLE}_markdup_RGreplaced.bam \
+       RGID= "naturalhybrids_2020" \
+       RGLB= "Lib1" \
+       RGPL= "ILLUMINA" \
+       RGPU= "unit1" \
+       RGSM= ${SAMPLE}
+
+
+#### INDEXING THE NEW BAM FILE ####
+samtools index -@ ${THREADS} ${SAMPLE}_markdup_RGreplaced.bam
+
+
+### SETTING WORKING DIRECTORY WHERE VARIANT CALLING OUTPUTS WILL GO ###
+cd /lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/1_GVCF_files
+
+
+#### HaplotypeCaller
+gatk --java-options "-Xmx4g" HaplotypeCaller --tmp-dir /lustre/project/kferris/UCDavis_seqdata/BDR_gatk/TMPDIR \
+   --reference /lustre/project/kferris/MimulusGuttatus_reference/MguttatusTOL_551_v5.0.fa\
+   --input /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/${SAMPLE}/${SAMPLE}_markdup_RGreplaced.bam\
+   --output ${SAMPLE}.g.vcf.gz\
+   --emit-ref-confidence GVCF
+   --sample-name ${SAMPLE}
+
+
+module purge
+
+echo "End Job"
+
+

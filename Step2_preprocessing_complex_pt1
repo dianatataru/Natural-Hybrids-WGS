@@ -1,0 +1,142 @@
+#!/bin/bash
+#SBATCH --job-name=alignment_preprocessing
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/output/pre-processing_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/error/pre-processing_%A_%a.err
+#SBATCH --qos=normal
+#SBATCH --time=0-24:00:00
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --cpus-per-task=20   #: Number of threads per task
+#SBATCH --array=1-1000   #Job array (1-5), (6-1000),(1-5) already completed, max array size is 1000, 2472 files total
+##SBATCH --array=1-5
+
+### LOAD MODULES ###
+module load bwa
+module load samtools/1.10
+module load java-openjdk
+
+
+<<GATK_pre_processing_workflow
+PART ONE
+This script is designed to prepare samples for GATK varient calling. 
+It begins with sequence files in seqdata.fa.gz format
+The workflow steps are as follows:
+perform the alignment with bwa -mem and assign readgroup information,
+convert resulting .sam files to .bam files.
+
+Final output file: ${MERGED}/${SAMPLE}_aln_pe_sorted.bam
+
+NOTE: Natalie had to split the preprocessing script into 2 scripts for 
+multiple reasons. The first reason being that this script runs a define
+number of arrays, 1 per sample. Once the samples are merged the original
+array range will no longer fit the number of files needed for markdups and
+subsequent analysis. The second reason is that merging the samples requires
+all alignments to be finished, and by nature of a job array not all .bam
+files will be generated at the same time. Splitting the script into 2 
+scripts allows for completion of the alignment step before merging.
+GATK_pre_processing_workflow
+
+Note 10/18/22:This script was further edited by Diana Tataru with help from
+Cypress Admin C. Baribault to be able to run over and over again if the number
+of files you have to run is greater than MAXARRAYSIZE=10001. 
+
+echo "Start Job"
+
+###IF MORE THAN 1000 FILES###
+
+R1_FILE_LIST=$(ls -1 /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/*R1_001.fastq.gz)
+R2_FILE_LIST=$(ls -1 /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/*R2_001.fastq.gz)
+# check for matching read files
+R1_FILE_LIST_SIZE=$(wc -w <<<$R1_FILE_LIST)
+R2_FILE_LIST_SIZE=$(wc -w <<<$R2_FILE_LIST)
+for v in R1_FILE_LIST_SIZE R2_FILE_LIST_SIZE; do echo "Using $v=${!v}"; done
+if [ $R1_FILE_LIST_SIZE -ne $R2_FILE_LIST_SIZE ]; then
+	echo "ERROR: Encountered unmatched read files: R1_FILE_LIST_SIZE=$R1_FILE_LIST_SIZE and R2_FILE_LIST_SIZE=$R2_FILE_LIST._SIZE Exiting."
+	exit 1
+fi
+
+NUMBER_FILE_PAIRS_ALREADY_DONE=1000
+#NUMBER_FILE_PAIRS_ALREADY_DONE=0
+NUMBER_FILE_PAIRS_TODO=$(( $R1_FILE_LIST_SIZE-$NUMBER_FILE_PAIRS_ALREADY_DONE ))
+MAX_FILE_PAIRS_PER_JOB=$(( ($NUMBER_FILE_PAIRS_TODO+1000-1)/1000 ))
+for v in NUMBER_FILE_PAIRS_ALREADY_DONE NUMBER_FILE_PAIRS_TODO MAX_FILE_PAIRS_PER_JOB; do
+	echo "Using $v=${!v}"
+done
+START_FILE_INDEX=$(( $NUMBER_FILE_PAIRS_ALREADY_DONE+1+($SLURM_ARRAY_TASK_ID-1)*$MAX_FILE_PAIRS_PER_JOB))
+END_FILE_INDEX=$(( $START_FILE_INDEX+$MAX_FILE_PAIRS_PER_JOB-1 ))
+for v in START_FILE_INDEX END_FILE_INDEX; do echo "Using $v=${!v}"; done
+for FILE_INDEX in $(seq $START_FILE_INDEX $END_FILE_INDEX); do
+	echo "FILE_INDEX=$FILE_INDEX"
+	if [ $FILE_INDEX -gt $R1_FILE_LIST_SIZE ]; then
+		continue
+	fi
+
+### ASSIGNING VARIABLES ###
+
+#This is similar to Natalie's original code
+# Array 1-352 represents 352 samples and SLURM_ARRAY_TASK_ID represents elements in that array.
+# The following line allows to link the elements of the array with the actual data FW and RV
+# read files (R1/R2).
+#R1=$(find /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/ \
+#    | grep R1_001.fastq.gz \
+#    | sort \
+#    | awk -v line=${SLURM_ARRAY_TASK_ID+1001} 'line==NR')
+#R2=$(find /lustre/project/kferris/Diana_Tataru/hybrids/2_hybrid1fastQC/ \
+#    | grep R2_001.fastq.gz \
+#    | sort \
+#    | awk -v line=${SLURM_ARRAY_TASK_ID+1001} 'line==NR')
+
+#This is for if samples >1000
+R1=$(cut -f $FILE_INDEX -d " "<<<$R1_FILE_LIST)
+R2=$(cut -f $FILE_INDEX -d " "<<<$R2_FILE_LIST)
+echo "Starting processing for files..."
+echo "R1=$R1 and..."
+echo "R2=$R2."
+
+# Sample prefix from the R1/R2 files, is in the sample_names.list (ex: KGF_02.._L3)
+SAMPLE=$(echo $R1 | cut -d "/" -f 8 | cut -d "_" -f 1-5) #Retrieves "KGF_#_...L#"
+HEADER=$(echo $R1 | cut -d "/" -f 8 | cut -d "_" -f 1-2) #Retrieves "KGF_#" only
+SEQID="hybrids" #project name and date for bam header
+REF="/lustre/project/kferris/MimulusGuttatus_reference/MguttatusTOL_551_v5.0.fa" #reference genome for the california foothills population
+THREADS=20
+TMPDIR="/lustre/project/kferris/TMPDIR"
+PICARD="/share/apps/picard/2.20.7/picard.jar"
+
+### SETTING WORKING DIRECTORY WHERE BWA OUTPUTS WILL GO ###
+cd /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged
+mkdir ${HEADER}
+
+<<BWA_Alignment
+This BWA aligmnent uses some of Caiti Heil's workflow from the
+runSeqAlignVarientCall_20190130.sh script which I have stored
+on my local machine under my desktop "Ferris Lab Materials" folder.
+In an email conversation she mentioned that she did not trim the 
+sequencing data because her lab got better alignments when they didn't trim.
+I've combined some of her methods with the suggested workflow in:
+https://eriqande.github.io/eca-bioinf-handbook/alignment-of-sequence-data-to-a-reference-genome-and-associated-steps.html
+BWA_Alignment
+
+########## RUNNING THE ALIGNMENT ON UNTRIMMED DATA ##########
+
+#Natalie's old code
+#bwa mem -R '@RG\tID:'${SEQID}'\tSM:'${SAMPLE}'\tLB:lib1' -t ${THREADS} ${REF} \
+# ${R1} ${R2} \
+# | samtools view -hb -@ ${THREADS} - | samtools sort -T $TMPDIR -@ ${THREADS} - -o ${HEADER}/${SAMPLE}_aln_pe_sorted.bam
+
+#Diana's new code
+bwa mem -R '@RG\tID:'${SEQID}'\tSM:'${SAMPLE}'\tLB:lib1' -t ${THREADS} ${REF} \
+ ${R1} ${R2} | \
+ samtools view -hu -@ ${THREADS} - | \
+ samtools sort -T $TMPDIR -@ ${THREADS} - -o ${HEADER}/${SAMPLE}_aln_pe_sorted.bam
+
+
+echo "Finished processing for files..."
+	echo "R1=$R1 and..."
+	echo "R2=$R2."
+done
+
+
+module purge
+echo "End Job"
+

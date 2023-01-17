@@ -1,0 +1,88 @@
+#!/bin/bash
+#SBATCH --job-name=merge_preproc
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/output/merge/pre-processing_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/error/merge/pre-processing_%A_%a.err
+#SBATCH --qos=normal
+#SBATCH --time=0-24:00:00
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --cpus-per-task=20   #: Number of threads per task
+#SBATCH --array=207-311   # 309 folders in hybrids/3_hybrid1pre-processing_merged
+
+### LOAD MODULES ###
+module load  samtools/1.10 #this version was used for the first half of the script
+module load java-openjdk
+
+
+<<GATK_pre_processing_workflow
+PART TWO
+This script merges the resulting sorted .bam file from the
+"align_preprocessing_part1.sh" while supposedly maintining the 
+associated read group information. Then it uses Picard MarkDuplicates
+to mark and remove duplicates, then indexes the resulting .bam file
+and finally prints some statistics for the last .bam file.
+
+
+Input file:   KGF_*/${SAMPLE}_aln_pe_sorted.bam
+Output files: KGF_*/${SAMPLE}_merged.bam
+			  KGF_*/${SAMPLE}_markdup.bam
+			  KGF_*/${SAMPLE}_markdup.bam.bai
+			  KGF_*/${SAMPLE}_markdup.bam.flagstat.txt
+
+The workflow I followed uses the following documentation:
+https://eriqande.github.io/eca-bioinf-handbook/alignment-of-sequence-data-to-a-reference-genome-and-associated-steps.html
+
+NOTE: Becuase not all samples were sequenced on 2 lanes the number of
+arrays used in this script now reflects the number of directories (one per
+biological sample) in the 3_BDR_pre-processing_merge/ folder
+GATK_pre_processing_workflow
+
+
+echo "Start Job"
+
+#gets the appropriate sample directory
+#Original
+#P=$(find /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/ -type d \
+#    | grep _S \ #have to figure out how to rename this to fit my samples, changed from KGF_ to _
+#    | sort \
+#    | awk -v line=${SLURM_ARRAY_TASK_ID} 'line==NR')
+
+#Diana trying something new
+P=$(find /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged/ -type d | grep _S | sort | awk -v line=${SLURM_ARRAY_TASK_ID} 'line==NR')
+
+SAMPLE=$(echo $P | cut -d "/" -f 8 | cut -d "_" -f 1-2) #Retrieves "GBG#_S#" only
+
+
+THREADS=20
+PICARD="/share/apps/picard/2.20.7/picard.jar"
+
+echo "P=$P"
+echo "Sample=$SAMPLE"
+
+### SETTING WORKING DIRECTORY WHERE MERGED .BAM OUTPUTS WILL GO ###
+cd /lustre/project/kferris/Diana_Tataru/hybrids/3_hybrid1pre-processing_merged
+
+
+### MERGE SORTED BAM FILES ###
+samtools merge -f -@ ${THREADS} ${SAMPLE}/${SAMPLE}_merged.bam ${SAMPLE}/*R1_001.fastq.gz_aln_pe_sorted.bam
+
+
+### MARK AND REMOVE DUPLICATE READS ###
+java -jar $PICARD MarkDuplicates \
+     INPUT=${SAMPLE}/${SAMPLE}_merged.bam \
+     OUTPUT=${SAMPLE}/${SAMPLE}_markdup.bam \
+     METRICS_FILE=${SAMPLE}/${SAMPLE}_dup_metrics.txt \
+     ASSUME_SORTED=true \
+     REMOVE_DUPLICATES=true \
+     VALIDATION_STRINGENCY=LENIENT
+
+samtools index -@ ${THREADS} ${SAMPLE}/${SAMPLE}_markdup.bam
+
+### Looking at alignment Again ###
+samtools flagstat -@ ${THREADS} ${SAMPLE}/${SAMPLE}_markdup.bam \
+   > ${SAMPLE}/${SAMPLE}_markdup.bam.flagstat.txt
+
+
+module purge
+echo "End Job"
