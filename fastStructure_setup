@@ -22,6 +22,10 @@ module load anaconda
 cd /lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/vars
 
 python setup.py build_ext --inplace
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/fastStructure
+
+python setup.py build_ext --inplace
     
 module purge
 echo "End Job"
