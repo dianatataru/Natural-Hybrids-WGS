@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --job-name=setup_FS
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/output/setup_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/error/setup_%A_%a.err
+#SBATCH --qos=long
+#SBATCH --time=7-00:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+
+#run this to make environment before running 1_fastStructure
+
+echo "Start Job" 
+
+#### load modules here ###
+module load anaconda
+
+##Build library extensions###
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/vars
+
+python setup.py build_ext --inplace
+    
+module purge
+echo "End Job"
