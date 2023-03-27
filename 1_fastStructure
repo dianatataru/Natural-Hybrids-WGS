@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --job-name=fastStructure
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/output/output_%A_%a.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/error/error_%A_%a.err
+#SBATCH --qos=long
+#SBATCH --time=7-00:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+
+#### load modules here ###
+module load anaconda
+
+#running faststructure
+#This script uses Python 2.7.11 available as part of the anaconda module and
+#was written in spring 2023 by Diana Tataru using annotation from https://rajanil.github.io/fastStructure/.
+#This takes a structure input file, which I created from the joint VCF using PLINK recode.
+
+### Begin fastStructure ###
+
+echo "Start Job"
+echo "Start fastStructure"
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/fastStructure/
+
+python structure.py -K 3 --input=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/hybrid1_structure.recode.strct_in --output=fastStructure3_out
+
+echo "End fastStructure"
+
+###visualize admixture proportions###
+
+echo "Start distruct"
+
+python distruct.py -K 3 --input=fastStructure3_out --output=fastStructure3_distruct.svg
+
+echo "End distruct"
+
+module purge
+echo "End Job"
