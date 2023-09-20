@@ -1,0 +1,53 @@
+#!/bin/sh
+#SBATCH --job-name=FS_vis
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/output1.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/error1.err
+#SBATCH --qos=normal
+#SBATCH --time=0-24:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node\
+
+#This file is to extract and visualize the quality metrics from sequencing data. Input is a vcf.gz file.
+
+#load modules
+module load R/4.1.1-intel
+module load bcftools/1.16
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
+TMPDIR="/lustre/project/kferris/TMPDIR"
+
+#extract Fisher Strand (FS), Strand Odds Ratio (SOR), Mapping Quality Rank Sum Test (MQRankSum), Read Position Rank Sum Test (ReadPosRankSum), Quality by depth (QD), RMS Mapping Quality (MQ),and the combined depth across samples (INFO/DP)
+#bcftools query hybrid1_all.vcf.gz -f '%FS\t%SOR\t%MQRankSum\t%ReadPosRankSum\t%QD\t%MQ\t%DP\n' > hybrid1_all_FS.txt
+
+# Exit the shell script and enter R code
+exec R --slave <<-EOF
+
+# ggplot2 install it
+install.packages("farver", lib="/lustre/project/kferris/Diana_Tataru/software/lib", repos="https://cran.r-project.org/")
+
+library (farver, lib="/lustre/project/kferris/Diana_Tataru/software/lib")
+library (withr, lib="/lustre/project/kferris/Diana_Tataru/software/lib")
+library (labeling, lib="/lustre/project/kferris/Diana_Tataru/software/lib")
+library(ggplot2, lib="/lustre/project/kferris/Diana_Tataru/software/lib")
+
+data <- read.table("/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/hybrid1_all_FS.txt", header = FALSE, sep = "\t")
+colnames(data)<-c("FS","SOR","MQRankSum", "ReadPosRankSum","QD","MQ","DP")
+
+p1 <- ggplot(data, aes(x = FS)) +
+  geom_histogram(binwidth = 0.1) +
+  labs(title = "Histogram of FS", x = "FS", y = "Frequency")
+
+pdf("/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/histogram_FS.pdf", width = 7, height = 7)
+
+print(p1)
+
+dev.off()
+
+EOF
+
+module purge
+echo "end job"
+
