@@ -1,0 +1,116 @@
+#!/bin/sh
+#SBATCH --job-name=merge
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+##SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/output_jointgeno/output8.out
+##SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/error_jointgeno/error8.err
+#SBATCH --output=/mnt/IEEL/dtataru/hybrids/4_GATKvarcall/output_jointgeno/output22.out
+#SBATCH --error=/mnt/IEEL/dtataru/hybrids/4_GATKvarcall/error_jointgeno/error22.err
+#SBATCH --qos=long
+#SBATCH --time=7-00:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+
+
+
+#### load modules here
+module load samtools/1.10
+module load gatk/4.1.8.1
+module load java-openjdk/1.8.0
+module load vcftools/0.1.14
+
+<<GATK_VariantCalling
+This script uses the gatk toolkit version gatk/4.1.8.1 and
+was written in spring 2021 by Natalie Gonzalez
+
+This is part 2 of the gatk variant calling process. This script
+        calls the gatk GenomicDBImport tool and consolidates the VCF files
+        produced in the previous script. It also takes a sample map file
+        which is a tab-delimited text file containing the sample name
+        followed by a tab and then followed by a path to the vcf file
+        for that sample. An example would be:
+
+        KGF_02  /path-to/4_BDR_GATK_variant_calling/1_GVCF_files/KGF_02.g.vcf.gz
+
+Once the samples have been  consolidated, GenotypeCVCFs is called. It can only be
+                passed either 1 single sample vcf file, 1 multisample vcf file, or a
+                GenomicsDB workspace created by GenomicsDBImport. This script uses the
+                workspace option.
+
+note: normally before begining this workflow we'd begin with a
+        base quality recalibration step on the analysis ready bam
+        files, and conclude with the gatk VariantRecalibrator, but
+        both steps are being omitted because they require VCF files
+        of already known variants for the populations being worked with
+GATK_VariantCalling
+
+
+echo "Start Job"
+#echo "Start Consolidation"
+
+WORKDIR=/mnt/IEEL/dtataru
+
+export TMPDIR=$WORKDIR/TMPDIR
+mkdir -p $TMPDIR
+
+### CONSOLIDATING VCFS ###
+#batchsize of 0 means no batches were used
+#an interval list has to be passed to --L if whole genome is to be considered
+#run this by itself first to see if it works. Takes a few days.
+
+#gatk --java-options "-Xmx60g" GenomicsDBImport  --tmp-dir $TMPDIR \
+#        --genomicsdb-workspace-path $WORKDIR/hybrids/4_GATKvarcall/2.5_GenomicsDB_data_store/ \
+#	--genomicsdb-shared-posixfs-optimizations \
+#        --batch-size 100 \
+#        --L $WORKDIR/hybrids/intervals.list \
+#        --use-jdk-inflater \
+#        --sample-name-map $WORKDIR/hybrids/sample_name_map_alpha.txt \
+#        --reader-threads 20
+
+#echo "End Consolidation"
+#################################################################################################
+#echo "Start Joint Genotyping"
+
+### JOINT GENOTYPING ###
+#change working directory
+#run intervals in chunks of two chromososomes or this will time out in the long QOS
+cd $WORKDIR/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
+
+#gatk  --java-options "-Xmx60g" GenotypeGVCFs  --tmp-dir $TMPDIR \
+#    -R /lustre/project/kferris/MimulusGuttatus_reference/MguttatusTOL_551_v5.0.fa\
+#    -V gendb://$WORKDIR/hybrids/4_GATKvarcall/2.5_GenomicsDB_data_store/\
+#    -L $WORKDIR/hybrids/intervals.list\
+#    -XL $WORKDIR/hybrids/Chr110.list\
+#    -use-jdk-inflater \
+#    -genomicsdb-shared-posixfs-optimizations \
+#    -O hybrid1_jointgeno_v12.vcf
+
+#echo "End Joint Genotyping"
+#################################################################################################
+
+echo "concatanate VCFs"
+#if the previous step was run separately by chromosome, this will combine all chromosomes into one vcf file
+vcf-concat hybrid1_jointgeno_v10.vcf hybrid1_jointgeno_v9.vcf hybrid1_jointgeno_v11.vcf hybrid1_jointgeno_v6.vcf hybrid1_jointgeno_v12.vcf hybrid1_jointgeno_v7.vcf hybrid1_jointgeno_v8.vcf > hybrid1_all.vcf
+
+#################################################################################################
+echo "Printing Statistics"
+
+### COUNTVARIANTS ###
+# counts variant records in VCF file regardless of filter status
+gatk  --java-options "-Xmx8g" CountVariants\
+    -V hybrid1_all.vcf\
+    -O hybrid1_CountVariants
+
+### VARIANTSTOTABLE ###
+#extracts fields from VCF to tab-delimited table
+gatk  --java-options "-Xmx8g" VariantsToTable\
+    -V hybrid1_all.vcf\
+    -O hybrid1_VCF_v3.table
+
+echo "Finished Printing Statistics"
+
+module purge
+echo "End Job"
+
+
