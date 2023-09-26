@@ -1,0 +1,49 @@
+#!/bin/sh
+#SBATCH --job-name=PCA
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/PCA1.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/PCA1.err
+#SBATCH --qos=normal
+#SBATCH --time=0-24:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+
+#This file is written by Diana Tataru in Fall 2023. The goal is to create a PCA with filtered genomic data to explore population structure.
+#It uses the softwatd EIGENSOFT described in Patterson et al.(2006) PLOS Genetics 2(12): e190.
+#The EIGENSOFT smartpca needs four input files: The “.ped” (containing the genotype information) and “.map” (containing the chromosome/position information) files 
+#that we will produce using the software PLINK1.9, a “.pedind” file containing individual information, and a ‘.par’ file specifying the analysis settings.
+#This was written from guidace from this url: https://evomics.org/learning/population-and-speciation-genomics/2020-population-and-speciation-genomics/first-steps-in-genomic-data-analysis/#ex3
+
+###load modules
+module load bcftools/1.16
+
+echo "start job"
+
+cd /lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
+
+#To run PCA, first convert to.ped/.map format using PLINK: 
+plink --vcf hybrid1_all.hf.vcf.gz --aec --recode --out hybrid1_all.hf
+
+#now check the .map file to see if there is text in chromosome IDs. If so you have to remove it to make EIGENSOFT smartpca happy using the following commands:
+#cat hybrid1_all.hf.map | sed s'/LG//'g > tmp
+#less tmp
+#mv tmp hybrid1_all.hf.map 
+
+#now we have to generate the .pedind file by cutting the first 5 columns in .ped file and saving them in new tmp file
+#cat hybrid1_all.hf.ped | cut -d ' ' -f1-5 > tmp
+
+#add a 6th column to specify that the first three letters in each sample is the population
+#cat hybrid1_all.hf.ped | cut -c 1-3 | paste tmp - >  hybrid1_all.hf.pedind
+
+#now make the parameter file ".par" and save it as hybrid1_all.hf.par
+
+#run smartpca
+#smartca -p hybrid1_all.hf.par > pca01.out
+
+module purge
+echo "end job"
+
+
+
