@@ -1,0 +1,6 @@
+genotypename:   hybrid1_all.hf.ped
+snpname:        hybrid1_all.hf.map
+indivname:       ../CONVERTF/example.ped
+evecoutname:     hybrid1_all.hf.evec
+evaloutname:     hybrid1_all.hf.eval
+chrom:          8
