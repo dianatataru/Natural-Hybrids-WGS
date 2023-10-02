@@ -19,6 +19,7 @@
 ###load modules
 module load bcftools/1.16
 module load htslib/1.13
+module load plink/1.9
 
 echo "start job"
 
