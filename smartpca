@@ -18,6 +18,7 @@
 
 ###load modules
 module load bcftools/1.16
+module load htslib/1.13
 
 echo "start job"
 
