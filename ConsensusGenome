@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --job-name=consensus
+#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
+#SBATCH --mail-user=dtataru@tulane.edu
+#SBATCH --output=/lustre/project/kferris/Diana_Tataru/F4_F5/3_parental_lac/consensus1.out
+#SBATCH --error=/lustre/project/kferris/Diana_Tataru/F4_F5/3_parental_lac/consensus1.err
+#SBATCH --qos=normal
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=20   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+
+echo "Start Job"
+
+module load bcftools/1.16    
+
+cd /lustre/project/kferris/Diana_Tataru/F4_F5/3_parental_lac/
+
+cat /lustre/project/kferris/MimulusGuttatus_reference/MguttatusTOL_551_v5.0.fa | bcftools consensus SRR071764.fastq.gz > WLF47consensus.fa
+
+echo "End Job"
+
+module purge
