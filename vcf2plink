@@ -1,24 +1,45 @@
 #!/bin/bash
-#SBATCH --job-name=vcf2plink
-#SBATCH --mail-type=ALL # Valid values: BEGIN, END, FAIL, REQUEUE and ALL.
-#SBATCH --mail-user=dtataru@tulane.edu
-#SBATCH --output=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/error_vcf2plink/output1.out
-#SBATCH --error=/lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/error_vcf2plink/error1.err
-#SBATCH --qos=normal
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=20   #: Cpus per Task
-#SBATCH --nodes=1            #: Number of Nodes
-#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH --job-name=plinkpca
+#SBATCH --output=/project/dtataru/hybrids/logs/plinkpca.out
+#SBATCH --error=/project/dtataru/hybrids/logs/plinkpca.err
+#SBATCH --time=7-00:00:00
+#SBATCH -N 1
+#SBATCH --cpus-per-task=20
+#SBATCH -A loni_ferrislac
+#SBATCH --p=single
 
 echo "Start Job"
 
-module load plink/1.9
+module load python/3.11.5-anaconda  
+eval "$(conda shell.bash hook)"
+conda activate /home/dtataru/.conda/envs/plink
+export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
 
-cd /lustre/project/kferris/Diana_Tataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/
+cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/
 
-plink --vcf hybrid1_jointgeno_v2.vcf --make-bed --keep-allele-order --allow-extra-chr --out hybrid1_plink
+#merge hybrid and parental vcfs
+bcftools merge hybrid1_all.hf.vcf.gz /project/dtataru/lac_nas_gut/4_ref/3_Genotyped_GVCFs/lacnasgut_jointgeno.vcf.gz -Oz -o hybrid1_all.hf_15parents.vcf.gz
+tabix hybrid1_all.hf_15parents.vcf.gz
+gunzip hybrid1_all.hf_15parents.vcf.gz
+
+#make necessary input files in plink
+#plink --vcf hybrid1_all.hf.vcf --make-bed --keep-allele-order --allow-extra-chr --chr-set 14 --mind 0.9 --geno 1 --maf 0.001  --out hybrid1_plink2
+#plink --vcf hybrid1_all.hf.vcf --make-bed --keep-allele-order --allow-extra-chr --chr-set 14 --out hybrid1_plink3
+plink --vcf hybrid1_all.hf_15parents.vcf --make-bed --keep-allele-order --allow-extra-chr --chr-set 14 --out hybrid1_all.hf_15parents
+
+#check AF and missingness
+#plink --file hybrid1_all.hf --freq
+#plink --file hybrid1_all.hf --test-missing
+
+#make pca
+#plink --bfile hybrid1_plink3 --pca --mind 0.9 --allow-extra-chr --chr-set 14 --out hybrid1_plink3
+plink --bfile hybrid1_all.hf_15parents --pca --mind 0.9 --allow-extra-chr --chr-set 14 --out hybrid1_all.hf_15parents
+
+#pca is saying that there is not genotype information so I'm going to write  SNP list file
+#plink --bfile hybrid1_plink2 --mind 0.8 --allow-extra-chr --chr-set 14 --maf 0.05 --write-snplist
 
 module purge 
 
 echo "end job"
+
 
