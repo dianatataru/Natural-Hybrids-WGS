@@ -1,4 +1,4 @@
-### Identifying patterns of introgression in complex natural monkeyflower hybrid zones
+# Identifying patterns of introgression in complex natural monkeyflower hybrid zones
 
 This code describes the variant calling pipeline (using GATK Best Practices) and downstream analysis of WGS data.
 
@@ -21,22 +21,22 @@ Step3.2_temp
 
 The following steps take the output of the GATK pipeline (hybrid1_all.vcf).
 
-# Filtering
+### Filtering
 
 Visualize metrics using ```FS_visualization``` input of this is hybrid1_all.vcf and output is hybrid1_all.hf.vcf
 
-# Plink PCA
+### Plink PCA
 
 Input is hybrid1_all.hf.vcf and output is Plink bfiles as well as PCA files (eigenvec and eigenval). 
 Run using ```vcf2plink```.
 There are also some files for making a pca with smartpca (EIGENSOFT). I didn't end up using this.
 
-# Fast Stucture
+### Fast Stucture
 
 This takes the output of ```vcf2plink``` in the prior section (bed/bim/fam). 
 Set up the environment using ```fastStructure_setup``` and then run using ```1_faststucture```.
 
-# WinPCA
+### WinPCA
 
 This is a windowed PCA approach (https://academic.oup.com/bioinformatics/article/41/10/btaf529/8261369) 
 for identifying possible structural across the genome. 
