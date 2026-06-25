@@ -173,15 +173,34 @@ module load r
 #eval "$(conda shell.bash hook)"
 #conda activate /home/dtataru/.conda/envs/plink
 #export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
-
 cd ${OUTPUT_DIR}
+#with full vcf
 #plink --vcf ${INPUT_DIR}/${VCF} --recode A --out geno
 
-#echo "extract positions from .bim"
-#awk '{print $1, $4}' "${INPUT_DIR}/${PREFIX}.bim" > positions.txt
+#echo "plink pruning"
+# Step 1: Calculate LD and identify SNPs to keep
+#plink --bfile ${INPUT_DIR}/${PREFIX} \
+#      --indep-pairwise 200 20 0.3 \
+#      --out ld_pruned
 
-echo "transpose output to genotype matrix"
-python3 transpose_geno.py geno.raw genotype_matrix.txt
+# Step 2: Extract the pruned SNP set
+#plink --bfile ${INPUT_DIR}/${PREFIX} \
+#      --extract ld_pruned.prune.in \
+#      --make-bed \
+#      --out "${PREFIX}_pruned"
+
+# Step 3: Recode to .raw for lostruct
+#plink --bfile "${PREFIX}_pruned" \
+#      --recode A \
+#      --out geno_pruned
+
+#7762060 sites remaining after pruning
+
+#echo "extract positions from .bim"
+#awk '{print $1, $4}' "${PREFIX}_pruned.bim" > positions.txt
+
+#echo "transpose output to genotype matrix"
+#python3 transpose_geno.py geno_pruned.raw genotype_matrix.txt
 
 echo "run lostruct"
 #Usage: Rscript ${SCRIPTDIR}/localpca_manyMDSaxes_v2.R <input_file> <output_prefix> <window_size_snps> <n_axes>
