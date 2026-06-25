@@ -105,3 +105,88 @@ conda deactivate
 
 This was written prior to the release of the M. laciniatus reference genome, it is to create a high quality pseudo-reference from WLF47.
 This pseudoreference is used in both downstream ancestry analyses- spIDder and Ancestry-HMM.
+
+## Local PCA to identify structural variants
+
+Taking the  subset_230_biallelic_only_alt_imputed.vcf.gz used as imput for GEMMA and calculating genotype likelihoods from it using workflow from Gompert et al. 20205, Science. 
+
+First, run vcf2gl.pl to convert the vcf to genotype likelihood format, then run estpEM and gl2genest. These scripts are in /project/dtataru/SY2/bams, so I can just call that directory and run a separate script in /project/dtataru/hybrids/lostruct called run_glestimation.sh
+
+```
+#!/bin/bash
+#SBATCH --job-name=glest
+#SBATCH --output=/project/dtataru/hybrids/logs/glest.out
+#SBATCH --error=/project/dtataru/hybrids/logs/glest.err
+#SBATCH --time=0-24:00:00
+#SBATCH -N 1
+#SBATCH --cpus-per-task=20
+#SBATCH -A loni_ferrislac
+#SBATCH --partition=single
+
+SCRIPT_DIR="/project/dtataru/SY2/bams"
+VCF="/project/dtataru/hybrids/GEMMA/subset_230_biallelic_only_alt_imputed.vcf"
+OUTPUT_DIR="/project/dtataru/hybrids/lostruct"
+
+cd ${OUTPUT_DIR}
+
+#convert vcf to genotype likelihood
+perl ${SCRIPT_DIR}/vcf2gl.pl maf ${VCF}
+
+#name of output files and first line of .gl to have #ind #loci instead of 0 0
+
+#run estpEM
+#${SCRIPT_DIR}/estpEM -i subset_230_biallelic_only_alt_imputed.gl -o subset_230_biallelic_only_alt_imputed_estpEM.txt -e 0.001 -m 50 -h 1
+
+#run gl2genest
+## posterior mode
+#${SCRIPT_DIR}/gl2genestMax subset_230_biallelic_only_alt_imputed_estpEM.txt  subset_230_biallelic_only_alt_imputed.gl
+## posterior mean
+#${SCRIPT_DIR}/gl2genest subset_230_biallelic_only_alt_imputed_estpEM.txt subset_230_biallelic_only_alt_imputed.gl
+```
+okay there's acutally no GL data for that vcf, just GT, checked using:
+```
+grep -v "^#" subset_230_biallelic_only_alt_imputed.vcf | head -2 | cut -f9
+GT
+grep -v "^#" hybrid1_SH.hf.vcf | head -2 | cut -f9
+GT:AD:DP:GQ:PGT:PID:PL:PS
+GT:AD:DP:GQ:PGT:PID:PL:PS
+
+```
+One option I have is to convert my GT to hard calls (0/1/2) which should be fine with my high coverage data like so:
+
+```
+#!/bin/bash
+#SBATCH --job-name=run_lostruct
+#SBATCH --output=/project/dtataru/hybrids/logs/lostruct.out
+#SBATCH --error=/project/dtataru/hybrids/logs/lostruct.err
+#SBATCH --time=0-24:00:00
+#SBATCH -N 1
+#SBATCH --cpus-per-task=20
+#SBATCH -A loni_ferrislac
+#SBATCH --partition=single
+
+#load modules
+module load python/3.11.5-anaconda
+module load r
+
+#activate plink env
+#eval "$(conda shell.bash hook)"
+#conda activate /home/dtataru/.conda/envs/plink
+#export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
+
+cd ${OUTPUT_DIR}
+#plink --vcf ${INPUT_DIR}/${VCF} --recode A --out geno
+
+#echo "extract positions from .bim"
+#awk '{print $1, $4}' "${INPUT_DIR}/${PREFIX}.bim" > positions.txt
+
+echo "transpose output to genotype matrix"
+python3 transpose_geno.py geno.raw genotype_matrix.txt
+
+echo "run lostruct"
+#Usage: Rscript ${SCRIPTDIR}/localpca_manyMDSaxes_v2.R <input_file> <output_prefix> <window_size_snps> <n_axes>
+Rscript localpca_manyMDSaxes_withfiltering.R genotype_matrix.txt hybrids1_subset_227_biallelic_only_alt_imputed_1k 1000 10
+
+echo "done"
+
+```
