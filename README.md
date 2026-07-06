@@ -165,6 +165,11 @@ One option I have is to convert my GT to hard calls (0/1/2) which should be fine
 #SBATCH -A loni_ferrislac
 #SBATCH --partition=single
 
+INPUT_DIR="/project/dtataru/hybrids/GEMMA"
+OUTPUT_DIR="/project/dtataru/hybrids/lostruct"
+PREFIX="subset_230_biallelic_only_alt_imputed"
+VCF="subset_230_biallelic_only_alt_imputed.vcf"
+
 #load modules
 module load python/3.11.5-anaconda
 module load r
