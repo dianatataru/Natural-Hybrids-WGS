@@ -214,3 +214,55 @@ Rscript localpca_manyMDSaxes_withfiltering.R genotype_matrix.txt hybrids1_subset
 echo "done"
 
 ```
+
+## Run Entropy to compare to year 2 & 3
+
+salloc --time=6:00:00 --ntasks=12 --nodes=1 --account=loni_ferrislac --partition=single
+
+want to be able to compare to year 2 & 3, so need to subset the WGS data
+
+```
+#!/bin/bash
+#SBATCH --job-name=bcftoolsisec
+#SBATCH --output=/project/dtataru/hybrids/logs/bcftoolsisec.out
+#SBATCH --error=/project/dtataru/hybrids/logs/bcftoolsisec.err
+#SBATCH --time=0-72:00:00
+#SBATCH -N 1
+#SBATCH --cpus-per-task=20
+#SBATCH -A loni_ferrislac
+#SBATCH --partition=single
+
+module load bcftools
+module load htslib 
+
+cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
+
+#SY2
+bcftools isec -n=2 -w1 hybrid1_all.hf.vcf.gz /project/dtataru/SY2/bams/morefilter_1x_hybrids2.maxdepth6000.vcf.gz -Oz -o hybrid1_all.hf.subsetSY2.vcf.gz
+
+#SY3
+bcftools isec -n=2 -w1 hybrid1_all.hf.vcf.gz /project/dtataru/SY3/bams/morefilter_1x_hybrids3.maxdepth6000.allsamples.vcf.gz -Oz -o hybrid1_all.hf.subsetSY3.vcf.gz
+
+#index new vcfs
+tabix hybrid1_all.hf.subsetSY2.vcf.gz
+tabix hybrid1_all.hf.subsetSY3.vcf.gz
+
+#compute intersection (0002.vcf or 0003.vcf)
+bcftools isec -p isec_out hybrid1_all.hf.subsetSY2.vcf.gz hybrid1_all.hf.subsetSY3.vcf.gz
+
+#compute union
+#bcftools concat isec_out/0000.vcf isec_out/0001.vcf isec_out/0002.vcf -Oz -o union.vcf.gz
+#bcftools sort union.vcf.gz -Oz -o union_sorted.vcf.gz
+
+#make position lists of each
+#bcftools query -f '%CHROM\t%POS\n' union_sorted.vcf.gz > union_pos.txt
+#bcftools query -f '%CHROM\t%POS\n' isec_out/0002.vcf > intersection_pos.txt
+
+#subset origional SY1 vcf to union and intersection
+#bgzip union_pos.txt && tabix -s1 -b2 -e2 union_pos.txt.gz
+#bcftools view -R union_pos.txt.gz hybrid1_all.hf.vcf.gz -Oz -o wgsSY1_union_subset.vcf.gz
+
+#bgzip intersection_pos.txt && tabix -s1 -b2 -e2 intersection_pos.txt.gz
+#bcftools view -R intersection_pos.txt.gz hybrid1_all.hf.vcf.gz -Oz -o wgsSY1_intersection_subset.vcf.gz
+
+```
