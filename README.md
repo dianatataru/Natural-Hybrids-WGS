@@ -237,11 +237,26 @@ module load htslib
 
 cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
 
+#rename ddRad datasets to match WGS
+bcftools view -h morefilter_1x_hybrids2.maxdepth6000.vcf.gz | grep "^##contig" | sed -E 's/.*ID=([^,]+).*/\1/' | \
+  awk '{old=$0; new=$0; gsub("-","_",new); print old"\t"new}' > rename_chrs.txt
+bcftools annotate --rename-chrs rename_chrs.txt morefilter_1x_hybrids2.maxdepth6000.vcf.gz -Oz -o morefilter_1x_hybrids2.maxdepth6000_renamed.vcf.gz
+tabix morefilter_1x_hybrids2.maxdepth6000_renamed.vcf.gz
+
+bcftools view -h morefilter_1x_hybrids3.maxdepth6000.allsamples.vcf.gz | grep "^##contig" | sed -E 's/.*ID=([^,]+).*/\1/' | \
+  awk '{old=$0; new=$0; gsub("-","_",new); print old"\t"new}' > rename_chrs.txt
+bcftools annotate --rename-chrs rename_chrs.txt morefilter_1x_hybrids3.maxdepth6000.allsamples.vcf.gz -Oz -o morefilter_1x_hybrids3.maxdepth6000.allsamples_renamed.vcf.gz
+tabix morefilter_1x_hybrids3.maxdepth6000.allsamples_renamed.vcf.gz
+
 #SY2
-bcftools isec -n=2 -w1 hybrid1_all.hf.vcf.gz /project/dtataru/SY2/bams/morefilter_1x_hybrids2.maxdepth6000.vcf.gz -Oz -o hybrid1_all.hf.subsetSY2.vcf.gz
+bcftools isec -n=2 -w1 hybrid1_all.hf_renamed.vcf.gz /project/dtataru/SY2/bams/morefilter_1x_hybrids2.maxdepth6000_renamed.vcf.gz -Oz -o hybrid1_all.hf.subsetSY2.vcf.gz
+#bcftools view -H hybrid1_all.hf.subsetSY2.vcf.gz | wc -l
+#ended up with 62040/90625 variants
 
 #SY3
-bcftools isec -n=2 -w1 hybrid1_all.hf.vcf.gz /project/dtataru/SY3/bams/morefilter_1x_hybrids3.maxdepth6000.allsamples.vcf.gz -Oz -o hybrid1_all.hf.subsetSY3.vcf.gz
+bcftools isec -n=2 -w1 hybrid1_all.hf_renamed.vcf.gz /project/dtataru/SY3/bams/morefilter_1x_hybrids3.maxdepth6000.allsamples_renamed.vcf.gz -Oz -o hybrid1_all.hf.subsetSY3.vcf.gz
+bcftools view -H hybrid1_all.hf.subsetSY3.vcf.gz | wc -l
+#ended up with 1811 variants
 
 #index new vcfs
 tabix hybrid1_all.hf.subsetSY2.vcf.gz
@@ -251,18 +266,120 @@ tabix hybrid1_all.hf.subsetSY3.vcf.gz
 bcftools isec -p isec_out hybrid1_all.hf.subsetSY2.vcf.gz hybrid1_all.hf.subsetSY3.vcf.gz
 
 #compute union
-#bcftools concat isec_out/0000.vcf isec_out/0001.vcf isec_out/0002.vcf -Oz -o union.vcf.gz
-#bcftools sort union.vcf.gz -Oz -o union_sorted.vcf.gz
+bcftools concat isec_out/0000.vcf isec_out/0001.vcf isec_out/0002.vcf -Oz -o union.vcf.gz
+bcftools sort union.vcf.gz -Oz -o union_sorted.vcf.gz
 
 #make position lists of each
-#bcftools query -f '%CHROM\t%POS\n' union_sorted.vcf.gz > union_pos.txt
-#bcftools query -f '%CHROM\t%POS\n' isec_out/0002.vcf > intersection_pos.txt
+bcftools query -f '%CHROM\t%POS\n' union_sorted.vcf.gz > union_pos.txt #62802
+bcftools query -f '%CHROM\t%POS\n' isec_out/0002.vcf > intersection_pos.txt #1049 sites
 
-#subset origional SY1 vcf to union and intersection
-#bgzip union_pos.txt && tabix -s1 -b2 -e2 union_pos.txt.gz
-#bcftools view -R union_pos.txt.gz hybrid1_all.hf.vcf.gz -Oz -o wgsSY1_union_subset.vcf.gz
+mv union_sorted.vcf.gz WGS1_ddRADunion_sorted.vcf.gz
 
-#bgzip intersection_pos.txt && tabix -s1 -b2 -e2 intersection_pos.txt.gz
-#bcftools view -R intersection_pos.txt.gz hybrid1_all.hf.vcf.gz -Oz -o wgsSY1_intersection_subset.vcf.gz
+cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/isec_out/
 
+#make genotypelikelihood file
+perl /project/dtataru/SY2/bams/vcf2gl.pl 0.0 WGS1_ddRADunion_sorted.vcf
+#Number of loci: 62802; number of individuals 297
+
+#make treatComb.txt and KeepInds.txt files to split pops looks like list with sample and pop
+yes 1 | head -n 297 > KeepInds.txt
+#split pops
+perl /project/dtataru/SY2/bams/splitPops.pl WGS1_ddRADunion_sorted.gl
+
+#runestpEM
+/project/dtataru/SY2/bams/estpEM -i GB_WGS1_ddRADunion_sorted.gl -o GB_WGS1_ddRADunion_estpEM.txt -e 0.001 -m 50 -h 1 #128
+/project/dtataru/SY2/bams/estpEM -i SH_WGS1_ddRADunion_sorted.gl -o SH_WGS1_ddRADunion_estpEM.txt -e 0.001 -m 50 -h 1 #66
+/project/dtataru/SY2/bams/estpEM -i HH_WGS1_ddRADunion_sorted.gl -o HH_WGS1_ddRADunion_estpEM.txt -e 0.001 -m 50 -h 1 #103
+
+# split faststructure file by pop and make sure it matches the order
+perl splitfaststructure.pl GB_WGS1_ddRADunion_sorted.gl
+perl splitfaststructure.pl SH_WGS1_ddRADunion_sorted.gl
+perl splitfaststructure.pl HH_WGS1_ddRADunion_sorted.gl
+```
+now to run entropy:
+
+```
+#!/bin/bash
+#SBATCH --output=/project/dtataru/hybrids/logs/entropy_%A_%a.out
+#SBATCH --error=/project/dtataru/hybrids/logs/entropy_%A_%a.err
+#SBATCH --time=3-00:00:00
+#SBATCH -p single
+#SBATCH -N 1
+#SBATCH --cpus-per-task=20
+#SBATCH -A loni_ferrislac
+
+eval "$(conda shell.bash hook)"
+conda activate entropy
+
+cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/isec_out
+population=(SH GB HH)
+
+for POP in "${population[@]}"
+do
+    # run three chains for each population
+    entropy -i /project/dtataru//project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/isec_out/${POP}_WGS1_ddRADunion_sorted.gl -m 1 \
+        -n 2 \
+        -k 3 -q faststructure_input/${POP}_WGS1_ddRADunion_sorted.meanQ  \
+        -l 2000 -b 1500 -t 10 \
+        -o ${POP}_output/${POP}_mcmcoutk3chain1.hdf5
+
+    entropy -i /project/dtataru/SY2/bams/${POP}_WGS1_ddRADunion_sorted.gl -m 1 \
+        -n 2 \
+        -k 3 -q faststructure_input/${POP}_WGS1_ddRADunion_sorted.meanQ   \
+        -l 2000 -b 1500 -t 10 \
+        -o ${POP}_output/${POP}_mcmcoutk3chain2.hdf5
+
+    entropy -i /project/dtataru/SY2/bams/${POP}_WGS1_ddRADunion_sorted.gl -m 1 \
+        -n 2 \
+        -k 3 -q faststructure_input/${POP}_WGS1_ddRADunion_sorted.meanQ  \
+        -l 2000 -b 1500 -t 10 \
+        -o ${POP}_output/${POP}_mcmcoutk3chain3.hdf5
+
+    # Run assessconvergence.R on each chain individually
+    for chain in 1 2 3
+    do
+        Rscript auxfiles/assessconvergence.R ${POP}_output/${POP}_mcmcoutk3chain${chain}.hdf5
+    done
+
+	#assess convergence, R ~1 is good
+	estpost.entropy -p q -s 4 ${POP}_output/${POP}_mcmcoutk3chain1.hdf5 \
+		${POP}_output/${POP}_mcmcoutk3chain2.hdf5 \
+		${POP}_output/${POP}_mcmcoutk3chain3.hdf5 q
+		-o ${POP}_output/${POP}_qmcmcdiag.txt
+
+done
+```
+
+and then run_entropypostprocessing.sh:
+
+```
+#!/bin/bash
+#SBATCH --output=/project/dtataru/hybrids/logs/entropypost_%A_%a.out
+#SBATCH --error=/project/dtataru/hybrids/logs/entropypost_%A_%a.err
+#SBATCH --time=1-00:00:00
+#SBATCH -p single
+#SBATCH -N 1
+#SBATCH -n 1
+#SBATCH -A loni_ferrislac
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=200G
+
+eval "$(conda shell.bash hook)"
+conda activate entropy
+module load r
+
+POP="GB"
+cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/isec_out/${POP}_output/
+
+# getting genotype estimates
+estpost.entropy -p gprob -s 0 "${POP}_mcmcoutk3chain1.hdf5" "${POP}_mcmcoutk3chain2.hdf5" "${POP}_mcmcoutk3chain3.hdf5" -o genoest.txt
+
+# getting ancestry (q) estimates
+estpost.entropy -p q -s 0 "${POP}_mcmcoutk3chain1.hdf5" "${POP}_mcmcoutk3chain2.hdf5" "${POP}_mcmcoutk3chain3.hdf5" -o admixest.txt
+
+# getting WAIC values
+estpost.entropy -p deviance -s 3 "${POP}_mcmcoutk3chain1.hdf5"
+
+#plot admixture plots
+#Rscript plotadmix.R
 ```
