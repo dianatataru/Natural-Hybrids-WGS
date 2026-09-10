@@ -232,8 +232,8 @@ want to be able to compare to year 2 & 3, so need to subset the WGS data
 #SBATCH -A loni_ferrislac
 #SBATCH --partition=single
 
-module load bcftools
-module load htslib 
+module load bcftools/1.18
+module load htslib/1.23
 
 cd /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs
 
@@ -296,6 +296,40 @@ perl splitfaststructure.pl GB_WGS1_ddRADunion_sorted.gl
 perl splitfaststructure.pl SH_WGS1_ddRADunion_sorted.gl
 perl splitfaststructure.pl HH_WGS1_ddRADunion_sorted.gl
 ```
+
+I need to check why there were so few shared sites, especially for sample year 1&3 I am guessing that this issue may have to do with multiallelic sites, so I will try to maybe just run position matching:
+
+Aha! I figured out the issue. I had been playing around with what it would have looked like to keep all of the samples (n=221) for SY3 and call variants. this resulted in 2771 variants, too few. So i want to use the filtered dataset with just 159 samples(that is what I used for entropy anyways).
+```
+salloc --time=6:00:00 --ntasks=12 --nodes=1 --account=loni_ferrislac --partition=single
+
+module load bcftools
+
+#renanme the correct sy3 file
+bcftools annotate --rename-chrs rename_chrs.txt morefilter_1x_hybrids3.maxdepth6000.vcf -Oz -o morefilter_1x_hybrids3.maxdepth6000_renamed.vcf.gz
+tabix morefilter_1x_hybrids3.maxdepth6000_renamed.vcf.gz
+
+# extract positions from each
+bcftools query -f '%CHROM\t%POS\n' hybrid1_all.hf.vcf.gz | sort -u > wgs1_pos.txt
+bcftools query -f '%CHROM\t%POS\n' /project/dtataru/SY2/bams/morefilter_1x_hybrids2.maxdepth6000_renamed.vcf.gz | sort -u > sy2_pos.txt
+bcftools query -f '%CHROM\t%POS\n' /project/dtataru/SY3/bams/morefilter_1x_hybrids3.maxdepth6000_renamed.vcf.gz | sort -u > sy3_pos.txt
+
+#find shared positions between pairs
+comm -12 wgs1_pos.txt sy2_pos.txt > sy1_sy2_shared_pos.txt #73333 sites
+comm -12 wgs1_pos.txt sy3_pos.txt > sy1_sy3_shared_pos.txt #155373 sites
+
+#combine all three
+cat sy1_sy2_shared_pos.txt sy1_sy3_shared_pos.txt | sort -u -k1,1 -k2,2n > union_shared_pos.txt #190980 sites MUCH BETTER
+
+#turn it into a regions file
+bgzip union_shared_pos.txt
+tabix -s1 -b2 -e2 union_shared_pos.txt.gz
+
+bcftools view -R union_shared_pos.txt.gz hybrid1_all.hf.vcf.gz -Oz -o hybrid1_all.hf_union_subset.vcf.gz
+tabix hybrid1_all.hf_union_subset.vcf.gz
+
+```
+
 now to run entropy:
 
 ```
