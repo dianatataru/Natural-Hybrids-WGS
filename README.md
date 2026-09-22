@@ -417,3 +417,165 @@ estpost.entropy -p deviance -s 3 "${POP}_mcmcoutk3chain1.hdf5"
 #plot admixture plots
 #Rscript plotadmix.R
 ```
+
+## Fst between populations and between species
+
+### Fst between species
+Extracted fst between species using the five allopatric populations per parent with pixy in the following script:
+
+```
+#!/bin/bash
+#SBATCH --job-name=pixy
+#SBATCH --output=/project/dtataru/lac_nas_gut/logs/runpixy.out
+#SBATCH --error=/project/dtataru/lac_nas_gut/logs/runpixy.err
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=6   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH -A loni_ferrislac
+
+
+#### load modules here
+#module load vcftools
+#module load bcftools
+#module load htslib
+#module load samtools
+
+eval "$(conda shell.bash hook)"
+conda activate /home/dtataru/.conda/envs/pixy
+export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
+
+
+#this script runs pixy to get population stats from a joint vcf using guidance from here:
+#https://pixy.readthedocs.io/en/latest/guide/pixy_guide.html
+
+cd /project/dtataru/lac_nas_gut/4_ref/3_Genotyped_GVCFs/
+
+#zip and index GVCF
+# bgzip lacnasgut_jointgeno.vcf
+# tabix lacnasgut_jointgeno.vcf.gz
+
+### Site level filtration ###
+
+#Ivey et al 2021:  INDELs, keep sites with a minimum quality score (minQ) of 30 and a minimum coverage of 5× per samples, #fourfold degenerate synonymous sites (from Brandvain et al., 2014; Coughlan et al., 2020), for the 14 main scaffolds of the #M. guttatus reference genome (corresponding to the 14 chromosomes in this group)
+
+#vcftools --gzvcf lacnasgut_jointgeno.vcf.gz \
+#       --remove-indels \
+#       --max-missing 0.8 \
+#       --min-meanDP 5 \
+#       --max-meanDP 600 \
+#       --recode --stdout | bgzip -c >lacnasgut_filtered2.vcf.gz
+
+### Pop Gen Filters ###
+
+#Ivey et al 2021: default filtering expressions in Pixy (DP>=10, RGQ>=20 for invariant sites; DP>=10, GQ>=20, RGQ>=20 for #variant sites), and calculated DXY, FST, and π in 500KB windows before averaging all windows for genome-wide values
+#more notes on filtering: https://speciationgenomics.github.io/filtering_vcfs/
+
+# create a filtered VCF containing only invariant sites
+#vcftools --gzvcf lacnasgut_filtered2.vcf.gz \
+#       --max-maf 0 \
+#       --minDP 10 \
+#       --recode --stdout | bgzip -c > lacnasgut_invariant2.vcf.gz
+
+# create a filtered VCF containing only variant sites
+#vcftools --gzvcf lacnasgut_filtered2.vcf.gz \
+#       --mac 1 \
+#       --minDP 10 \
+#       --minGQ 20 \
+#       --recode --stdout | bgzip -c > lacnasgut_variant2.vcf.gz
+
+# index both vcfs using tabix
+#tabix lacnasgut_invariant2.vcf.gz
+#tabix lacnasgut_variant2.vcf.gz
+
+# combine the two VCFs using bcftools concat
+#bcftools concat \
+#       --allow-overlaps \
+#       lacnasgut_variant2.vcf.gz lacnasgut_invariant2.vcf.gz \
+#       -O z -o lacnasgut_popfiltered2.vcf.gz
+
+#tabix lacnasgut_popfiltered2.vcf.gz
+
+#run pixy
+
+#pixy --stats pi fst dxy \
+#       --vcf lacnasgut_popfiltered2.vcf.gz \
+#       --populations lacnasgut_pops2.txt \
+#       --window_size 500 \
+#       --n_cores 4 
+
+#rerun pixy with fst components
+pixy --stats fst \
+       --fst_components \
+       --bypass_invariant_check \
+       --vcf lacnasgut_popfiltered2.vcf.gz \
+       --populations lacnasgut_pops.txt \
+       --window_size 500 \
+       --output_folder /project/dtataru/lac_nas_gut/popstats \
+       --output_prefix fstcomponents
+
+```
+
+Then calculated genomewide fst, chromosome-level fst, and plott using this R script:
+
+```
+library(tidyverse)
+
+fst_components <- read_delim("popstats/fstcomponents_fst.txt", delim = "\t")
+
+# genome-wide Fst per population pair
+genome_wide_fst <- fst_components %>%
+  group_by(pop1, pop2) %>%
+  summarise(
+    sum_a = sum(wc_fst_a, na.rm = TRUE),
+    sum_b = sum(wc_fst_b, na.rm = TRUE),
+    sum_c = sum(wc_fst_c, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(wc_fst = sum_a / (sum_a + sum_b + sum_c))
+
+
+#per chromosome
+per_chrom_fst <- fst_components %>%
+  group_by(pop1, pop2, chromosome) %>%
+  summarise(
+    sum_a = sum(wc_fst_a, na.rm = TRUE),
+    sum_b = sum(wc_fst_b, na.rm = TRUE),
+    sum_c = sum(wc_fst_c, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(wc_fst = sum_a / (sum_a + sum_b + sum_c))
+
+# add a label so genome-wide and per-chromosome rows can live in one file
+genome_wide_fst_out <- genome_wide_fst %>%
+  mutate(chromosome = "genome_wide", .after = pop2)
+
+per_chrom_fst_out <- per_chrom_fst %>%
+  mutate(chromosome = as.character(chromosome))
+
+fst_summary <- bind_rows(genome_wide_fst_out, per_chrom_fst_out) %>%
+  select(pop1, pop2, chromosome, sum_a, sum_b, sum_c, wc_fst) %>%
+  arrange(pop1, pop2, chromosome)
+
+write_tsv(fst_summary, "pairwise_fst_summary.txt")
+
+```
+
+run using sbatch:
+
+```
+#!/bin/bash
+#SBATCH --job-name=pixy_postproc
+#SBATCH --output=/project/dtataru/lac_nas_gut/logs/runpixy_postproc.out
+#SBATCH --error=/project/dtataru/lac_nas_gut/logs/runpixy_postproc.err
+#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=6   #: Cpus per Task
+#SBATCH --nodes=1            #: Number of Nodes
+#SBATCH --ntasks-per-node=1  #: Number of Tasks per Node
+#SBATCH -A loni_ferrislac
+
+
+#### load modules here
+module load r
+
+Rscript pixyfstsummary.R
