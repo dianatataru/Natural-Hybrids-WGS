@@ -579,3 +579,22 @@ run using sbatch:
 module load r
 
 Rscript pixyfstsummary.R
+```
+
+## Extracting BSLMM site alleles and frequencies
+
+```
+module load bcftools
+bcftools query -R lobing_BSLMMpositions.txt -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/AF\n' hybrid1_all.hf.vcf.gz
+#genotypes of samples (horizontal)
+bcftools query -R floweringtime_BSLMMpositions.txt \
+  -f '%CHROM\t%POS\t%REF\t%ALT[\t%GT]\n' hybrid1_all.hf.vcf.gz
+#genotypes with sample names
+bcftools query -R floweringtime_BSLMMpositions.txt \
+  -f '[%CHROM\t%POS\t%REF\t%ALT\t%SAMPLE\t%GT\n]' hybrid1_all.hf.vcf.gz
+
+#see parental genotypes
+ cd lac_nas_gut/4_ref/3_Genotyped_GVCFs/
+bcftools query -R /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/floweringtime_BSLMMpositions.txt -f '%CHROM\t%POS\t%REF\t%ALT\t%INFO/AF\n' hybrid1_all.hf.vcf.gz
+bcftools query -R /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/floweringtime_BSLMMpositions.txt \
+  -f '[%CHROM\t%POS\t%REF\t%ALT\t%SAMPLE\t%GT\n]' lacnasgut_jointgeno.vcf.gz
