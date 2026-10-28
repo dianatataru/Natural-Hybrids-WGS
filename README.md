@@ -383,7 +383,37 @@ do
 
 done
 ```
+or with forkEntropy.pl:
 
+```
+#!/usr/bin/perl
+# fork script for entropy, one process per population x chain
+
+use strict;
+use warnings;
+use Parallel::ForkManager;
+
+my $max = 24;    # max simultaneous entropy processes (match --ntasks)
+my $pm  = Parallel::ForkManager->new($max);
+
+my $base = "/project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/ddRADintersect";
+my @population = ("SH");
+
+foreach my $pop (@population) {
+    foreach my $ch (1..3) {
+        sleep 2;            # stagger starts so RNG seeds differ
+        $pm->start and next;
+
+        my $out = "${pop}_output/${pop}_mcmcoutk3chain${ch}_l6000b2500s10bigQ.hdf5";
+        system "entropy -i ${pop}_WGS1_ddRADunion_sorted.gl -m 1 -n 2 -k 3 -Q 1"
+             . "-q ${pop}__WGS1_ddRADunion_sorted.meanQ "
+             . "-l 6000 -b 2500 -t 10 -s 10 -o $out";
+
+        $pm->finish;
+    }
+}
+$pm->wait_all_children;
+```
 and then run_entropypostprocessing.sh:
 
 ```
