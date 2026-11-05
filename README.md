@@ -636,3 +636,9 @@ when I ran big Q for SH it would not converge, so I dug in to the files a little
 HH - 91 individuals
 SH -65 individual
 GB - 103 individuals
+
+awk 'NF != 65' cpntest_SH_WGS1_ddRADunion_sorted_filtered.txt | wc -l #138733
+awk 'NF != 91' cpntest_HH_WGS1_ddRADunion_sorted_filtered.txt | wc -l #15666
+awk 'NF != 103' cpntest_GB_WGS1_ddRADunion_sorted_filtered.txt | wc -l # 5061
+
+
