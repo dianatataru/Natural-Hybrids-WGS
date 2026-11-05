@@ -632,7 +632,7 @@ bcftools query -R /project/dtataru/hybrids/4_GATKvarcall/3_Genotyped_GVCFs/flowe
 
 ## troubleshooting entropy run
 
-when I ran big Q for SH it would not converge, so I dug in to the files a little bit and realized that some of the positions were missing genotype likelihoods for sites. I need to more stringently filter the subset WGS file. I did this in the script ```run_ddRADintersect_v2.sh```, and filtered to the same metrics as SY2 and SY3 (1x, 3sd mean depth, etc). this resulted in 138797 sites and 294 individuals. Dropped 38 individuals. 
+when I ran big Q for SH it would not converge, so I dug in to the files a little bit and realized that some of the positions were missing genotype likelihoods for sites. I need to more stringently filter the subset WGS file. I did this in the script ```run_ddRADintersect_v2.sh```, and filtered to the same metrics as SY2 and SY3 (1x, 3sd mean depth, etc). this resulted in 138733 sites and 294 individuals. Dropped 38 individuals. 
 HH - 91 individuals
 SH -65 individual
 GB - 103 individuals
@@ -640,14 +640,4 @@ GB - 103 individuals
 awk 'NF != 65' cpntest_SH_WGS1_ddRADunion_sorted_filtered.txt | wc -l #138733
 awk 'NF != 91' cpntest_HH_WGS1_ddRADunion_sorted_filtered.txt | wc -l #15666
 awk 'NF != 103' cpntest_GB_WGS1_ddRADunion_sorted_filtered.txt | wc -l # 5061
-
-
-ESTPDIR="/project/dtataru/SY2/bams"
-
-#obtain Bayesian estimates of genotypes using the allele frequency priors
-## posterior mode
-${ESTPDIR}/gl2genestMax af_SH_hybrids1.txt SH_WGS1_ddRADunion_sorted_filtered.gl
-## posterior mean
-${ESTPDIR}/gl2genest af_SH_hybrids1.txt SH_WGS1_ddRADunion_sorted_filtered.gl 
-
 
