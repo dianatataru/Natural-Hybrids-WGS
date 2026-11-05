@@ -642,3 +642,12 @@ awk 'NF != 91' cpntest_HH_WGS1_ddRADunion_sorted_filtered.txt | wc -l #15666
 awk 'NF != 103' cpntest_GB_WGS1_ddRADunion_sorted_filtered.txt | wc -l # 5061
 
 
+ESTPDIR="/project/dtataru/SY2/bams"
+
+#obtain Bayesian estimates of genotypes using the allele frequency priors
+## posterior mode
+${ESTPDIR}/gl2genestMax af_SH_hybrids1.txt SH_WGS1_ddRADunion_sorted_filtered.gl
+## posterior mean
+${ESTPDIR}/gl2genest af_SH_hybrids1.txt SH_WGS1_ddRADunion_sorted_filtered.gl 
+
+
